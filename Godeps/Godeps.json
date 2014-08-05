@@ -6,16 +6,20 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/cloudfoundry-incubator/candiedyaml",
+			"Rev": "9d6da703654a1d6897de218799c1ff4eccf49b85"
+		},
+		{
 			"ImportPath": "github.com/cloudfoundry/bosh-agent/errors",
-			"Rev": "c02ad04a42ed40882a50a09c9255bdfd3844738c"
+			"Rev": "be1b7d406bce97e9d305cf435d0ae3454ceeec99"
 		},
 		{
 			"ImportPath": "github.com/cloudfoundry/bosh-agent/logger",
-			"Rev": "c02ad04a42ed40882a50a09c9255bdfd3844738c"
+			"Rev": "be1b7d406bce97e9d305cf435d0ae3454ceeec99"
 		},
 		{
 			"ImportPath": "github.com/cloudfoundry/bosh-agent/system",
-			"Rev": "c02ad04a42ed40882a50a09c9255bdfd3844738c"
+			"Rev": "be1b7d406bce97e9d305cf435d0ae3454ceeec99"
 		},
 		{
 			"ImportPath": "github.com/nu7hatch/gouuid",
