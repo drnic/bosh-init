@@ -136,6 +136,60 @@ packages:
 					),
 				)
 			})
+
+			It("returns all errors when the binary values are invalid", func() {
+				fakeFs.WriteFileString(
+					"/somedir/release.MF",
+					`---
+jobs:
+- name: fake-job-1
+  version: !binary |-
+    fake-binary==
+  fingerprint: !binary |-
+    fake-binary==
+  sha1: !binary |-
+    fake-binary==
+- name: fake-job-2
+  version: !binary |-
+    fake-binary==
+  fingerprint: !binary |-
+    fake-binary==
+  sha1: !binary |-
+    fake-binary==
+
+packages:
+- name: fake-package-1
+  version: !binary |-
+    fake-binary==
+  fingerprint: !binary |-
+    fake-binary==
+  sha1: !binary |-
+    fake-binary==
+- name: fake-package-2
+  version: !binary |-
+    fake-binary==
+  fingerprint: !binary |-
+    fake-binary==
+  sha1: !binary |-
+    fake-binary==
+`,
+				)
+
+				_, err := reader.Read()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job version for 'fake-job-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job fingerprint for 'fake-job-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job sha for 'fake-job-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job version for 'fake-job-2'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job fingerprint for 'fake-job-2'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary job sha for 'fake-job-2'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package version for 'fake-package-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package fingerprint for 'fake-package-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package sha for 'fake-package-1'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package version for 'fake-package-2'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package fingerprint for 'fake-package-2'"))
+				Expect(err.Error()).To(ContainSubstring("Decoding binary package sha for 'fake-package-2'"))
+			})
 		})
 
 		Context("when the CPI release manifest is invalid YAML", func() {
@@ -173,7 +227,26 @@ packages:
 	})
 
 	Describe("Close", func() {
-		XIt("cleans up the extracted release", func() {
+		BeforeEach(func() {
+			fakeExtractor.ExtractPath = "/somedir"
+			fakeFs.WriteFileString("/somedir/release.MF", "{}")
+		})
+
+		Context("when release is extracted", func() {
+			It("cleans up the extracted release", func() {
+				_, err := reader.Read()
+				Expect(err).ToNot(HaveOccurred())
+				err = reader.Close()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fakeFs.FileExists("/somedir/release.MF")).NotTo(BeTrue())
+			})
+		})
+
+		Context("when release is not yet extracted", func() {
+			It("does nothing", func() {
+				err := reader.Close()
+				Expect(err).NotTo(HaveOccurred())
+			})
 		})
 	})
 })

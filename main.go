@@ -9,6 +9,7 @@ import (
 
 	bmcmd "github.com/cloudfoundry/bosh-micro-cli/cmd"
 	bmconfig "github.com/cloudfoundry/bosh-micro-cli/config"
+	bmtar "github.com/cloudfoundry/bosh-micro-cli/tar"
 	bmui "github.com/cloudfoundry/bosh-micro-cli/ui"
 )
 
@@ -20,7 +21,9 @@ func main() {
 	fileSystem := boshsys.NewOsFileSystem(logger)
 	config, configService := loadConfig(logger, fileSystem)
 	ui := bmui.NewDefaultUI(os.Stdout, os.Stderr)
-	cmdFactory := bmcmd.NewFactory(config, configService, fileSystem, ui)
+	runner := boshsys.NewExecCmdRunner(logger)
+	extractor := bmtar.NewCmdExtractor(runner, fileSystem, logger)
+	cmdFactory := bmcmd.NewFactory(config, configService, fileSystem, ui, extractor)
 	cmdRunner := bmcmd.NewRunner(cmdFactory)
 
 	err := cmdRunner.Run(os.Args[1:])

@@ -8,25 +8,29 @@ import (
 	boshsys "github.com/cloudfoundry/bosh-agent/system"
 
 	bmconfig "github.com/cloudfoundry/bosh-micro-cli/config"
+	bmtar "github.com/cloudfoundry/bosh-micro-cli/tar"
 	bmui "github.com/cloudfoundry/bosh-micro-cli/ui"
 	bmvalidation "github.com/cloudfoundry/bosh-micro-cli/validation"
 )
 
 type deployCmd struct {
-	ui     bmui.UI
-	config bmconfig.Config
-	fs     boshsys.FileSystem
+	ui        bmui.UI
+	config    bmconfig.Config
+	fs        boshsys.FileSystem
+	extractor bmtar.Extractor
 }
 
 func NewDeployCmd(
 	ui bmui.UI,
 	config bmconfig.Config,
 	fs boshsys.FileSystem,
+	extractor bmtar.Extractor,
 ) *deployCmd {
 	return &deployCmd{
-		ui:     ui,
-		config: config,
-		fs:     fs,
+		ui:        ui,
+		config:    config,
+		fs:        fs,
+		extractor: extractor,
 	}
 }
 
@@ -54,6 +58,11 @@ func (c *deployCmd) Run(args []string) error {
 		c.ui.Error(fmt.Sprintf("CPI release '%s' does not exist", cpiPath))
 		return bosherr.WrapError(err, "Validating CPI release")
 	}
+
+	//releaseReader := release.NewTarReader(cpiPath, c.fs, c.extractor)
+
+	//releaseValidator := bmvalidation.NewCPIReleaseValidator()
+	//releaseValidator.Valid(release)
 
 	return nil
 }
