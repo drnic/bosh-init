@@ -13,6 +13,7 @@ import (
 	boshuuid "github.com/cloudfoundry/bosh-agent/uuid"
 
 	bmcloud "github.com/cloudfoundry/bosh-micro-cli/cloud"
+	bmval "github.com/cloudfoundry/bosh-micro-cli/cmd/validator"
 	bmconfig "github.com/cloudfoundry/bosh-micro-cli/config"
 	bmcpi "github.com/cloudfoundry/bosh-micro-cli/cpi"
 	bmcomp "github.com/cloudfoundry/bosh-micro-cli/cpi/compile"
@@ -228,11 +229,13 @@ func (f *factory) createDeployCmd() (Cmd, error) {
 	deploymentRepo := bmconfig.NewDeploymentRepo(f.deploymentConfigService)
 	releaseRepo := bmconfig.NewReleaseRepo(f.deploymentConfigService, f.uuidGenerator)
 	deploymentRecord := bmdeployer.NewDeploymentRecord(deploymentRepo, releaseRepo, stemcellRepo, sha1Calculator)
+	validator := bmval.NewValidator(eventLogger, f.fs, f.logger)
 
 	return NewDeployCmd(
 		f.ui,
 		f.userConfig,
 		f.fs,
+		validator,
 		deploymentParser,
 		boshDeploymentValidator,
 		cpiInstaller,

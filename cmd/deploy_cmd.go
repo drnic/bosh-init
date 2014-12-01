@@ -7,6 +7,7 @@ import (
 	boshlog "github.com/cloudfoundry/bosh-agent/logger"
 	boshsys "github.com/cloudfoundry/bosh-agent/system"
 
+	bmval "github.com/cloudfoundry/bosh-micro-cli/cmd/validator"
 	bmconfig "github.com/cloudfoundry/bosh-micro-cli/config"
 	bmcpi "github.com/cloudfoundry/bosh-micro-cli/cpi"
 	bmdeployer "github.com/cloudfoundry/bosh-micro-cli/deployer"
@@ -22,6 +23,7 @@ type deployCmd struct {
 	ui                      bmui.UI
 	userConfig              bmconfig.UserConfig
 	fs                      boshsys.FileSystem
+	validator               bmval.Validator
 	deploymentParser        bmdepl.Parser
 	boshDeploymentValidator bmdeplval.DeploymentValidator
 	cpiInstaller            bmcpi.Installer
@@ -36,6 +38,7 @@ type deployCmd struct {
 func NewDeployCmd(ui bmui.UI,
 	userConfig bmconfig.UserConfig,
 	fs boshsys.FileSystem,
+	validator bmval.Validator,
 	deploymentParser bmdepl.Parser,
 	boshDeploymentValidator bmdeplval.DeploymentValidator,
 	cpiInstaller bmcpi.Installer,
@@ -48,6 +51,7 @@ func NewDeployCmd(ui bmui.UI,
 		ui:                      ui,
 		userConfig:              userConfig,
 		fs:                      fs,
+		validator:               validator,
 		deploymentParser:        deploymentParser,
 		boshDeploymentValidator: boshDeploymentValidator,
 		cpiInstaller:            cpiInstaller,
@@ -114,88 +118,35 @@ func (c *deployCmd) Run(args []string) error {
 
 type Deployment struct{}
 
-func (c *deployCmd) validateInputFiles(releaseTarballPath, stemcellTarballPath string) (
+func (c *deployCmd) validateInputFiles(cpiReleaseTarballPath, stemcellTarballPath string) (
 	cpiDeployment bmdepl.CPIDeployment,
 	boshDeployment bmdepl.Deployment,
 	cpiRelease bmrel.Release,
 	extractedStemcell bmstemcell.ExtractedStemcell,
 	err error,
 ) {
-	validationStage := c.eventLogger.NewStage("validating")
-	validationStage.Start()
+	c.validator.Start()
 
-	manifestValidationStep := validationStage.NewStep("Validating deployment manifest")
-	manifestValidationStep.Start()
-
-	if c.userConfig.DeploymentFile == "" {
-		err = bosherr.New("No deployment set")
-		manifestValidationStep.Fail(err.Error())
-		return cpiDeployment, boshDeployment, nil, nil, err
-	}
-
-	deploymentFilePath := c.userConfig.DeploymentFile
-
-	c.logger.Info(c.logTag, "Checking for deployment `%s'", deploymentFilePath)
-	if !c.fs.FileExists(deploymentFilePath) {
-		err = bosherr.New("Verifying that the deployment `%s' exists", deploymentFilePath)
-		manifestValidationStep.Fail(err.Error())
-		return cpiDeployment, boshDeployment, nil, nil, err
-	}
-
-	boshDeployment, cpiDeployment, err = c.deploymentParser.Parse(deploymentFilePath)
-	if err != nil {
-		err = bosherr.WrapError(err, "Parsing deployment manifest `%s'", deploymentFilePath)
-		manifestValidationStep.Fail(err.Error())
-		return cpiDeployment, boshDeployment, nil, nil, err
-	}
-
-	err = c.boshDeploymentValidator.Validate(boshDeployment)
+	boshDeployment, cpiDeployment, err = c.validator.ValidateDeployment(c.userConfig.DeploymentFile, c.deploymentParser, c.boshDeploymentValidator)
 	if err != nil {
 		err = bosherr.WrapError(err, "Validating deployment manifest")
-		manifestValidationStep.Fail(err.Error())
-		return cpiDeployment, boshDeployment, nil, nil, err
-	}
-
-	manifestValidationStep.Finish()
-
-	cpiValidationStep := validationStage.NewStep("Validating cpi release")
-	cpiValidationStep.Start()
-
-	if !c.fs.FileExists(releaseTarballPath) {
-		err = bosherr.New("Verifying that the CPI release `%s' exists", releaseTarballPath)
-		cpiValidationStep.Fail(err.Error())
 		return cpiDeployment, boshDeployment, cpiRelease, nil, err
 	}
 
-	cpiRelease, err = c.cpiInstaller.Extract(releaseTarballPath)
+	cpiRelease, err = c.validator.ValidateRelease(cpiReleaseTarballPath, c.cpiInstaller)
 	if err != nil {
-		err = bosherr.WrapError(err, "Extracting CPI release `%s'", releaseTarballPath)
-		cpiValidationStep.Fail(err.Error())
+		err = bosherr.WrapError(err, "Validating cpi release")
 		return cpiDeployment, boshDeployment, cpiRelease, nil, err
 	}
 
-	cpiValidationStep.Finish()
-
-	stemcellValidationStep := validationStage.NewStep("Validating stemcell")
-	stemcellValidationStep.Start()
-
-	if !c.fs.FileExists(stemcellTarballPath) {
-		err = bosherr.New("Verifying that the stemcell `%s' exists", stemcellTarballPath)
-		stemcellValidationStep.Fail(err.Error())
-		return cpiDeployment, boshDeployment, cpiRelease, nil, err
-	}
-
-	extractedStemcell, err = c.stemcellExtractor.Extract(stemcellTarballPath)
+	extractedStemcell, err = c.validator.ValidateStemcell(stemcellTarballPath, c.stemcellExtractor)
 	if err != nil {
 		defer cpiRelease.Delete()
-		err = bosherr.WrapError(err, "Extracting stemcell from `%s'", stemcellTarballPath)
-		stemcellValidationStep.Fail(err.Error())
+		err = bosherr.WrapError(err, "Validating stemcell")
 		return cpiDeployment, boshDeployment, cpiRelease, extractedStemcell, err
 	}
 
-	stemcellValidationStep.Finish()
-
-	validationStage.Finish()
+	c.validator.Finish()
 
 	return cpiDeployment, boshDeployment, cpiRelease, extractedStemcell, nil
 }

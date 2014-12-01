@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"errors"
 
+	"code.google.com/p/gomock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -28,6 +29,8 @@ import (
 	fakebmrel "github.com/cloudfoundry/bosh-micro-cli/release/fakes"
 	fakebmtemp "github.com/cloudfoundry/bosh-micro-cli/templatescompiler/fakes"
 	fakeui "github.com/cloudfoundry/bosh-micro-cli/ui/fakes"
+	//	fakebmval "github.com/cloudfoundry/bosh-micro-cli/cmd/validator/fakes"
+	mock_validator "github.com/cloudfoundry/bosh-micro-cli/cmd/validator/mocks"
 )
 
 var _ = Describe("DeployCmd", func() {
@@ -55,6 +58,9 @@ var _ = Describe("DeployCmd", func() {
 		fakeEventLogger *fakebmlog.FakeEventLogger
 		fakeStage       *fakebmlog.FakeStage
 
+		//		mockValidator *fakebmval.FakeValidator
+		mockValidator *mock_validator.MockValidator
+
 		deploymentManifestPath    string
 		cpiReleaseTarballPath     string
 		stemcellTarballPath       string
@@ -62,6 +68,9 @@ var _ = Describe("DeployCmd", func() {
 	)
 
 	BeforeEach(func() {
+		mockCtrl := gomock.NewController(GinkgoT())
+		defer mockCtrl.Finish()
+
 		fakeUI = &fakeui.FakeUI{}
 		fakeFs = fakesys.NewFakeFileSystem()
 		deploymentManifestPath = "/some/deployment/file"
@@ -86,26 +95,9 @@ var _ = Describe("DeployCmd", func() {
 		fakeJobRenderer = fakebmtemp.NewFakeJobRenderer()
 		fakeUUIDGenerator = &fakeuuid.FakeGenerator{}
 
-		fakeDeploymentRecord = fakebmdeployer.NewFakeDeploymentRecord()
-
-		logger = boshlog.NewLogger(boshlog.LevelNone)
-		command = bmcmd.NewDeployCmd(
-			fakeUI,
-			userConfig,
-			fakeFs,
-			fakeDeploymentParser,
-			fakeDeploymentValidator,
-			fakeCPIInstaller,
-			fakeStemcellExtractor,
-			fakeDeploymentRecord,
-			fakeDeployer,
-			fakeEventLogger,
-			logger,
-		)
-
 		cpiReleaseTarballPath = "/release/tarball/path"
-
 		stemcellTarballPath = "/stemcell/tarball/path"
+
 		expectedExtractedStemcell = bmstemcell.NewExtractedStemcell(
 			bmstemcell.Manifest{
 				ImagePath:          "/stemcell/image/path",
@@ -118,6 +110,51 @@ var _ = Describe("DeployCmd", func() {
 			"fake-extracted-path",
 			fakeFs,
 		)
+
+		release = bmrel.NewRelease(
+			"fake-release",
+			"fake-version",
+			[]bmrel.Job{},
+			[]*bmrel.Package{},
+			"/some/release/path",
+			fakeFs,
+		)
+
+		fakeDeploymentRecord = fakebmdeployer.NewFakeDeploymentRecord()
+		//		mockValidator = &fakebmval.FakeValidator{}
+		mockValidator = mock_validator.NewMockValidator(mockCtrl)
+		mockValidator.EXPECT().Start().AnyTimes()
+//		mockValidator.EXPECT().ValidateRelease(gomock.Any(), gomock.Any()).AnyTimes().Return(release, nil)
+//		mockValidator.EXPECT().ValidateStemcell(gomock.Any(), gomock.Any()).AnyTimes().Return(expectedExtractedStemcell, nil)
+		mockValidator.EXPECT().Finish().AnyTimes()
+
+
+
+		logger = boshlog.NewLogger(boshlog.LevelNone)
+		command = bmcmd.NewDeployCmd(
+			fakeUI,
+			userConfig,
+			fakeFs,
+			mockValidator,
+			fakeDeploymentParser,
+			fakeDeploymentValidator,
+			fakeCPIInstaller,
+			fakeStemcellExtractor,
+			fakeDeploymentRecord,
+			fakeDeployer,
+			fakeEventLogger,
+			logger,
+		)
+
+		fakeDeploymentRecord.SetIsDeployedBehavior(
+			deploymentManifestPath,
+			release,
+			expectedExtractedStemcell,
+			false,
+			nil,
+		)
+
+		//		mockValidator.ValidateStemcellReturns(expectedExtractedStemcell, nil)
 	})
 
 	Describe("Run", func() {
@@ -154,6 +191,7 @@ var _ = Describe("DeployCmd", func() {
 						fakeUI,
 						userConfig,
 						fakeFs,
+						mockValidator,
 						fakeDeploymentParser,
 						fakeDeploymentValidator,
 						fakeCPIInstaller,
@@ -162,15 +200,6 @@ var _ = Describe("DeployCmd", func() {
 						fakeDeployer,
 						fakeEventLogger,
 						logger,
-					)
-
-					release = bmrel.NewRelease(
-						"fake-release",
-						"fake-version",
-						[]bmrel.Job{},
-						[]*bmrel.Package{},
-						"/some/release/path",
-						fakeFs,
 					)
 
 					releaseContents :=
@@ -220,6 +249,8 @@ version: fake-version
 						fakeCPIInstaller.SetExtractBehavior(cpiReleaseTarballPath, fakeCPIRelease, nil)
 						fakeCPIInstaller.SetInstallBehavior(cpiDeployment, fakeCPIRelease, cloud, nil)
 
+						mockValidator.EXPECT().ValidateRelease(gomock.Any(), gomock.Any()).AnyTimes().Return(fakeCPIRelease, nil)
+
 						fakeDeployer.SetDeployBehavior(nil)
 						fakeStemcellExtractor.SetExtractBehavior(stemcellTarballPath, expectedExtractedStemcell, nil)
 
@@ -238,66 +269,46 @@ version: fake-version
 							fakeCPIRelease,
 							nil,
 						)
+
+//						mockValidator.EXPECT().ValidateDeployment(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(boshDeployment, cpiDeployment, nil)
+
+						//						mockValidator.ValidateReleaseReturns(fakeCPIRelease, nil)
+						//						mockValidator.ValidateDeploymentReturns(boshDeployment, cpiDeployment, nil)
 					})
 
-					It("adds a new event logger stage", func() {
+					It("starts and finishes validation stage", func() {
+						mockValidator.EXPECT().ValidateDeployment(deploymentManifestPath, fakeDeploymentParser, fakeDeploymentValidator).Return(boshDeployment, cpiDeployment, nil)
+
 						err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
 						Expect(err).NotTo(HaveOccurred())
 
-						Expect(fakeEventLogger.NewStageInputs).To(Equal([]fakebmlog.NewStageInput{
-							{
-								Name: "validating",
-							},
-						}))
-
-						Expect(fakeStage.Started).To(BeTrue())
-						Expect(fakeStage.Finished).To(BeTrue())
+						//						Expect(mockValidator.StartCallCount()).To(Equal(1))
+						//						Expect(mockValidator.FinishCallCount()).To(Equal(1))
 					})
 
-					It("parses the deployment manifest", func() {
-						err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
-						Expect(err).NotTo(HaveOccurred())
-						Expect(fakeDeploymentParser.ParsePath).To(Equal(deploymentManifestPath))
-					})
+					It("validates deployment", func() {
+						//						mockValidator.ValidateDeploymentStub = func(arg1 string, arg2 bmdepl.Parser, arg3 bmdeplval.DeploymentValidator) (bmdepl.Deployment, bmdepl.CPIDeployment, error) {
+						//							Expect(arg1).To(Equal(deploymentManifestPath))
+						//							Expect(arg2).To(Equal(deploymentManifestPath))
+						//							Expect(arg3).To(Equal(deploymentManifestPath))
+						//							return 3, errors.New("the-error")
+						//						}
+						mockValidator.EXPECT().ValidateDeployment(deploymentManifestPath, fakeDeploymentParser, fakeDeploymentValidator).Return(boshDeployment, cpiDeployment, nil)
 
-					It("validates bosh deployment manifest", func() {
-						err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
-						Expect(err).NotTo(HaveOccurred())
-						Expect(fakeDeploymentValidator.ValidateInputs).To(Equal([]fakebmdeplval.ValidateInput{
-							{
-								Deployment: boshDeployment,
-							},
-						}))
-					})
-
-					It("logs validation stages", func() {
 						err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
 						Expect(err).NotTo(HaveOccurred())
 
-						Expect(fakeStage.Steps).To(ContainElement(&fakebmlog.FakeStep{
-							Name: "Validating deployment manifest",
-							States: []bmeventlog.EventState{
-								bmeventlog.Started,
-								bmeventlog.Finished,
-							},
-						}))
-						Expect(fakeStage.Steps).To(ContainElement(&fakebmlog.FakeStep{
-							Name: "Validating cpi release",
-							States: []bmeventlog.EventState{
-								bmeventlog.Started,
-								bmeventlog.Finished,
-							},
-						}))
-						Expect(fakeStage.Steps).To(ContainElement(&fakebmlog.FakeStep{
-							Name: "Validating stemcell",
-							States: []bmeventlog.EventState{
-								bmeventlog.Started,
-								bmeventlog.Finished,
-							},
-						}))
+						//						Expect(mockValidator.ValidateDeploymentCallCount()).to(Equal(1))
+						//						deploymentFileArg, deploymentParserArg, deploymentValidatorArg := mockValidator.ValidateDeploymentArgsForCall(0);
+						//						Expect(deploymentFileArg).To(Equal(deploymentManifestPath))
+						//						Expect(deploymentParserArg).To(Equal(fakeDeploymentParser))
+						//						Expect(deploymentValidatorArg).To(Equal(fakeDeploymentValidator))
 					})
 
-					It("extracts CPI release tarball", func() {
+					FIt("validates cpi release", func() {
+						mockValidator.EXPECT().ValidateDeployment(deploymentManifestPath, fakeDeploymentParser, fakeDeploymentValidator).Return(boshDeployment, cpiDeployment, nil)
+						mockValidator.EXPECT().ValidateStemcell(gomock.Any(), gomock.Any()).Return(expectedExtractedStemcell, nil)
+
 						err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fakeCPIInstaller.ExtractInputs).To(Equal([]fakebmcpi.ExtractInput{
@@ -379,45 +390,17 @@ version: fake-version
 						})
 					})
 
-					Context("when parsing the cpi deployment manifest fails", func() {
-						It("returns error", func() {
-							fakeDeploymentParser.ParseErr = errors.New("fake-parse-error")
-
-							err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
-							Expect(err).To(HaveOccurred())
-							Expect(err.Error()).To(ContainSubstring("Parsing deployment manifest"))
-							Expect(err.Error()).To(ContainSubstring("fake-parse-error"))
-							Expect(fakeDeploymentParser.ParsePath).To(Equal(deploymentManifestPath))
-						})
-					})
-
 					Context("when deployment validation fails", func() {
 						BeforeEach(func() {
-							fakeDeploymentValidator.SetValidateBehavior([]fakebmdeplval.ValidateOutput{
-								{
-									Err: errors.New("fake-validation-error"),
-								},
-							})
+							mockValidator.EXPECT().ValidateDeployment(gomock.Any(), gomock.Any(), gomock.Any()).Return(bmdepl.Deployment{}, bmdepl.CPIDeployment{}, errors.New("fake-validation-error"))
+
+							//							mockValidator.ValidateDeploymentErr = errors.New()
 						})
 
 						It("returns an error", func() {
 							err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
 							Expect(err).To(HaveOccurred())
 							Expect(err.Error()).To(ContainSubstring("fake-validation-error"))
-						})
-
-						It("logs the failed event log", func() {
-							err := command.Run([]string{cpiReleaseTarballPath, stemcellTarballPath})
-							Expect(err).To(HaveOccurred())
-
-							Expect(fakeStage.Steps).To(ContainElement(&fakebmlog.FakeStep{
-								Name: "Validating deployment manifest",
-								States: []bmeventlog.EventState{
-									bmeventlog.Started,
-									bmeventlog.Failed,
-								},
-								FailMessage: "Validating deployment manifest: fake-validation-error",
-							}))
 						})
 					})
 
@@ -495,6 +478,7 @@ version: fake-version
 						fakeUI,
 						userConfig,
 						fakeFs,
+						mockValidator,
 						fakeDeploymentParser,
 						fakeDeploymentValidator,
 						fakeCPIInstaller,

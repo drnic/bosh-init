@@ -61,7 +61,7 @@ func (f *FakeInstaller) Extract(releaseTarballPath string) (bmrel.Release, error
 	if found {
 		return output.release, output.err
 	}
-	return nil, fmt.Errorf("Unsupported Input: %s", value)
+	return nil, fmt.Errorf("Unsupported Extract Input: %s", value)
 }
 
 func (f *FakeInstaller) Install(deployment bmdepl.CPIDeployment, release bmrel.Release) (bmcloud.Cloud, error) {
@@ -75,12 +75,13 @@ func (f *FakeInstaller) Install(deployment bmdepl.CPIDeployment, release bmrel.R
 	if err != nil {
 		return nil, fmt.Errorf("Could not serialize input %#v", input)
 	}
+	fmt.Printf("Actual Marshaled Install Input: %s\n", value)
 
 	output, found := f.installBehavior[value]
 	if found {
 		return output.cloud, output.err
 	}
-	return nil, fmt.Errorf("Unsupported Input: %s", value)
+	return nil, fmt.Errorf("Unsupported Install Input: %s", value)
 }
 
 func (f *FakeInstaller) SetInstallBehavior(
@@ -98,6 +99,8 @@ func (f *FakeInstaller) SetInstallBehavior(
 	if err != nil {
 		return fmt.Errorf("Could not serialize input %#v", input)
 	}
+	fmt.Printf("Expected Marshaled Install Input: %s\n", value)
+
 	f.installBehavior[value] = installOutput{cloud: cloud, err: err}
 	return nil
 }
